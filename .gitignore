@@ -1,0 +1,32 @@
+# Local/private state
+.env
+.env.*
+!.env.example
+secrets/
+certs/private/
+*.key
+*.p12
+*.pfx
+*.jks
+*.pem
+*.tfstate*
+volumes/
+data/
+backups/
+# Runtime/build artifacts
+.venv/
+__pycache__/
+*.py[cod]
+node_modules/
+dist/
+build/
+target/
+bin/
+obj/
+coverage/
+*.log
+.DS_Store
+.idea/
+.vscode/
+# Keep small, sanitized evidence summaries in evidence/ under version control.
+# Inspect git diff --cached: ignore rules are not a secret scanner.
