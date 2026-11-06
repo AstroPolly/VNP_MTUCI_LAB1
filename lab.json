@@ -1,0 +1,8 @@
+{
+  "number": 1,
+  "title": "Docker и in-memory мессенджер",
+  "contract_version": "1.1.0",
+  "default_base_url": "http://localhost:8080",
+  "grading": "3; 4 includes 3; 5 includes 4 plus one completed research track",
+  "scaffold_has_application": false
+}

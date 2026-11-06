@@ -1,0 +1,20 @@
+{
+  "lab": 1,
+  "kind": "requirements, not runnable deployment",
+  "required_for_grade_3": [
+    {
+      "role": "api",
+      "count_min": 1,
+      "student_implements": true,
+      "persistent_local_state": false
+    }
+  ],
+  "optional_components": [],
+  "rules": [
+    "Choose Compose or Swarm for lab3+; do not need both.",
+    "Never publish internal API replica ports in bypass of LB from lab3.",
+    "Versions/digests must be fixed in implementation.",
+    "Do not remove volumes in restart/failover checks.",
+    "Document service names, healthchecks, bootstrap/migrations and credentials."
+  ]
+}

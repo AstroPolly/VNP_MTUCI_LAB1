@@ -1,0 +1,1739 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MTUSI Messenger — лабораторная 1",
+    "version": "1.1.0",
+    "description": "Нормативный минимум на 3. Семантика: contracts/README.md. Расширения на 4/5 не должны менять этот API. Наличие кода ошибки в схеме не требует реализовать факультативную причину его выдачи."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "Локальный учебный стенд"
+    }
+  ],
+  "security": [
+    {
+      "devUser": []
+    }
+  ],
+  "paths": {
+    "/health/live": {
+      "get": {
+        "operationId": "liveness",
+        "summary": "Процесс жив",
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Неожиданная ошибка без внутренних деталей",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "readiness",
+        "summary": "Готов принимать трафик",
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Зависимость недоступна",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Неожиданная ошибка без внутренних деталей",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/users": {
+      "post": {
+        "operationId": "registerUser",
+        "summary": "Создать пользователя",
+        "responses": {
+          "201": {
+            "description": "Успех",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Неверный запрос",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Конфликт",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Ограничение частоты запросов",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Retry-After": {
+                "description": "Положительное число секунд.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Зависимость недоступна",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Неожиданная ошибка без внутренних деталей",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUser"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/me": {
+      "get": {
+        "operationId": "currentUser",
+        "summary": "Текущий пользователь",
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Неверный запрос",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет действительной аутентификации",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "WWW-Authenticate": {
+                "description": "Basic realm=\"messenger\", charset=\"UTF-8\" для входа; Bearer realm=\"messenger\" для защищённого API lab2+.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Объект отсутствует или недоступен",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Конфликт",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Ограничение частоты запросов",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Retry-After": {
+                "description": "Положительное число секунд.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Зависимость недоступна",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Неожиданная ошибка без внутренних деталей",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chats": {
+      "post": {
+        "operationId": "createChat",
+        "summary": "Создать чат; вызывающий должен входить в member_ids",
+        "responses": {
+          "201": {
+            "description": "Успех",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chat"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Неверный запрос",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет действительной аутентификации",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "WWW-Authenticate": {
+                "description": "Basic realm=\"messenger\", charset=\"UTF-8\" для входа; Bearer realm=\"messenger\" для защищённого API lab2+.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Объект отсутствует или недоступен",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Конфликт",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Ограничение частоты запросов",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Retry-After": {
+                "description": "Положительное число секунд.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Зависимость недоступна",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Неожиданная ошибка без внутренних деталей",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateChat"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listChats",
+        "summary": "Чаты текущего пользователя",
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Неверный запрос",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет действительной аутентификации",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "WWW-Authenticate": {
+                "description": "Basic realm=\"messenger\", charset=\"UTF-8\" для входа; Bearer realm=\"messenger\" для защищённого API lab2+.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Объект отсутствует или недоступен",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Конфликт",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Ограничение частоты запросов",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Retry-After": {
+                "description": "Положительное число секунд.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Зависимость недоступна",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Неожиданная ошибка без внутренних деталей",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/chats/{chat_id}": {
+      "get": {
+        "operationId": "getChat",
+        "summary": "Получить доступный чат",
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chat"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Неверный запрос",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет действительной аутентификации",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "WWW-Authenticate": {
+                "description": "Basic realm=\"messenger\", charset=\"UTF-8\" для входа; Bearer realm=\"messenger\" для защищённого API lab2+.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Объект отсутствует или недоступен",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Конфликт",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Ограничение частоты запросов",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Retry-After": {
+                "description": "Положительное число секунд.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Зависимость недоступна",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Неожиданная ошибка без внутренних деталей",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/chats/{chat_id}/messages": {
+      "post": {
+        "operationId": "createMessage",
+        "summary": "Отправить сообщение",
+        "responses": {
+          "201": {
+            "description": "Успех",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Неверный запрос",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет действительной аутентификации",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "WWW-Authenticate": {
+                "description": "Basic realm=\"messenger\", charset=\"UTF-8\" для входа; Bearer realm=\"messenger\" для защищённого API lab2+.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Объект отсутствует или недоступен",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Конфликт",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Ограничение частоты запросов",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Retry-After": {
+                "description": "Положительное число секунд.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Зависимость недоступна",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Неожиданная ошибка без внутренних деталей",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessage"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listMessages",
+        "summary": "Сообщения по (created_at, id) по возрастанию",
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessagePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Неверный запрос",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет действительной аутентификации",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "WWW-Authenticate": {
+                "description": "Basic realm=\"messenger\", charset=\"UTF-8\" для входа; Bearer realm=\"messenger\" для защищённого API lab2+.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Объект отсутствует или недоступен",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Конфликт",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Ограничение частоты запросов",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Retry-After": {
+                "description": "Положительное число секунд.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Зависимость недоступна",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Неожиданная ошибка без внутренних деталей",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Непустой идентификатор запроса; обязателен во всех ответах.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "devUser": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-User-Id",
+        "description": "Только учебная lab1: существующий UUID. Не является аутентификацией."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "invalid_request",
+                  "unauthorized",
+                  "not_found",
+                  "conflict",
+                  "payload_too_large",
+                  "unsupported_media_type",
+                  "rate_limited",
+                  "unavailable",
+                  "internal_error"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              },
+              "request_id": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "request_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false,
+        "examples": [
+          {
+            "error": {
+              "code": "not_found",
+              "message": "Объект не найден",
+              "request_id": "example-request-id"
+            }
+          }
+        ]
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "username": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]{3,32}$"
+          },
+          "display_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "created_at"
+        ],
+        "additionalProperties": false,
+        "examples": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "username": "alice",
+            "display_name": "Алиса",
+            "created_at": "2026-09-01T12:00:00Z"
+          }
+        ]
+      },
+      "CreateUser": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]{3,32}$"
+          },
+          "display_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "username",
+          "display_name"
+        ],
+        "additionalProperties": false,
+        "examples": [
+          {
+            "username": "alice",
+            "display_name": "Алиса"
+          }
+        ]
+      },
+      "Chat": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "member_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "minItems": 1,
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "member_ids",
+          "created_at"
+        ],
+        "additionalProperties": false,
+        "examples": [
+          {
+            "title": "Проект по ВНП",
+            "member_ids": [
+              "11111111-1111-4111-8111-111111111111",
+              "22222222-2222-4222-8222-222222222222"
+            ],
+            "id": "33333333-3333-4333-8333-333333333333",
+            "created_at": "2026-09-01T12:00:00Z"
+          }
+        ]
+      },
+      "CreateChat": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "member_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "minItems": 1,
+            "maxItems": 100,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "title",
+          "member_ids"
+        ],
+        "additionalProperties": false,
+        "examples": [
+          {
+            "title": "Проект по ВНП",
+            "member_ids": [
+              "11111111-1111-4111-8111-111111111111",
+              "22222222-2222-4222-8222-222222222222"
+            ]
+          }
+        ]
+      },
+      "Message": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "chat_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sender_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "chat_id",
+          "sender_id",
+          "text",
+          "created_at"
+        ],
+        "additionalProperties": false,
+        "examples": [
+          {
+            "id": "44444444-4444-4444-8444-444444444444",
+            "chat_id": "33333333-3333-4333-8333-333333333333",
+            "sender_id": "11111111-1111-4111-8111-111111111111",
+            "text": "Привет, Боб!",
+            "created_at": "2026-09-01T12:00:00Z"
+          }
+        ]
+      },
+      "CreateMessage": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false,
+        "examples": [
+          {
+            "text": "Привет, Боб!"
+          }
+        ]
+      },
+      "ChatPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Chat"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "additionalProperties": false
+      },
+      "MessagePage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "additionalProperties": false,
+        "examples": [
+          {
+            "items": [
+              {
+                "id": "44444444-4444-4444-8444-444444444444",
+                "chat_id": "33333333-3333-4333-8333-333333333333",
+                "sender_id": "11111111-1111-4111-8111-111111111111",
+                "text": "Привет, Боб!",
+                "created_at": "2026-09-01T12:00:00Z"
+              }
+            ],
+            "next_cursor": null
+          }
+        ]
+      }
+    }
+  }
+}
