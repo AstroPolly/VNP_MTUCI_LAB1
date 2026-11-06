@@ -1,64 +1,82 @@
-import requests
+"""Own black-box tests. Run against an already running server."""
 import concurrent.futures
-import os
+import sys
+from pathlib import Path
+from urllib.parse import quote
+sys.path.insert(0, str(Path(__file__).parent / 'tests'))
+from client import Client, arguments, check, run
 
-# Исправлен адрес: теперь 8080 (внутри контейнера) или из переменной окружения
-BASE_URL = os.getenv("API_URL", "http://127.0.0.1:8080/api/v1")
 
-def test_negative_cases():
-    print("Тест: Дубликат username (ожидается 409)")
-    requests.post(f"{BASE_URL}/users", json={"username": "testuser1"})
-    r2 = requests.post(f"{BASE_URL}/users", json={"username": "testuser1"})
-    assert r2.status_code == 409, f"Ожидался 409, получен {r2.status_code}"
+def history(c, actor, chat, limit=17):
+    result, cursor, seen = [], None, set()
+    while True:
+        path = '/api/v1/chats/' + chat['id'] + '/messages?limit=' + str(limit)
+        if cursor is not None:
+            check(cursor not in seen, 'cursor loop')
+            seen.add(cursor)
+            path += '&cursor=' + quote(cursor, safe='')
+        page = c.call('GET', path, actor=actor, schema='MessagePage')['json']
+        result.extend(page['items'])
+        cursor = page['next_cursor']
+        if cursor is None:
+            return result
 
-    print("Тест: Некорректный username (ожидается 400)")
-    r3 = requests.post(f"{BASE_URL}/users", json={"username": "BAD NAME!"})
-    assert r3.status_code == 400
 
-    print("Тест: Повреждённый JSON (ожидается 400)")
-    r4 = requests.post(f"{BASE_URL}/users", data="{bad json}", headers={"Content-Type": "application/json"})
-    assert r4.status_code == 400
+def main():
+    args = arguments('Own negative and concurrency tests')
+    c = Client(args.base_url)
+    alice, bob, eve, chat = c.bootstrap()
+    path = '/api/v1/chats/' + chat['id']
+    c.call('POST', '/api/v1/users', 409, body=alice['registration'])
+    for body in ({'username': ' ', 'display_name': 'A'}, {'username': 'abc', 'display_name': ' '},
+                 {'username': 123, 'display_name': 'A'}, {'username': 'abc', 'display_name': 'A', 'extra': 1}):
+        c.call('POST', '/api/v1/users', 400, body=body)
+    c.call('POST', '/api/v1/users', 400, raw=b'{bad', headers={'Content-Type': 'application/json'})
+    for method, suffix, body in [('GET', '', None), ('GET', '/messages', None), ('POST', '/messages', {'text': 'secret'})]:
+        c.call(method, path + suffix, 404, actor=eve, body=body)
+        c.call(method, path + suffix, 401, body=body)
+    c.call('POST', '/api/v1/chats', 401, raw=b'{bad', headers={'Content-Type': 'application/json'})
+    for members in ([alice['id'], alice['id']], [bob['id']], ['00000000-0000-4000-8000-000000000000', alice['id']]):
+        c.call('POST', '/api/v1/chats', 400, actor=alice, body={'title': 'bad', 'member_ids': members})
+    for value in ('', ' \t\n', 'a' * 4001, 123, None, '\ud800'):
+        # json.dumps ensure_ascii permits explicit malformed surrogate test.
+        import json
+        c.call('POST', path + '/messages', 400, actor=alice,
+               raw=json.dumps({'text': value}).encode(), headers={'Content-Type': 'application/json'})
+    c.call('POST', path + '/messages', 400, actor=alice, body={'text': 'ok', 'sender_id': bob['id']})
+    for query in ('limit=0', 'limit=101', 'limit=1.5', 'limit=true', 'cursor=', 'cursor=bogus'):
+        c.call('GET', path + '/messages?' + query, 400, actor=alice)
+    sent = [c.message(alice, chat, '🙂' * 4000)['json']]
+    sent += [c.message(bob, chat, f'page {i}')['json'] for i in range(22)]
+    check(history(c, alice, chat, 6) == sent, 'multi-page history mismatch')
+    check(history(c, alice, chat, 24) == sent, 'exact full last page did not terminate')
+    page = c.call('GET', path + '/messages?limit=1', actor=alice, schema='MessagePage')['json']
+    other = c.call('POST', '/api/v1/chats', 201, actor=alice,
+                   body={'title': 'other', 'member_ids': [alice['id']]}, schema='Chat')['json']
+    c.call('GET', '/api/v1/chats/' + other['id'] + '/messages?cursor=' + quote(page['next_cursor']), 400, actor=alice)
+    print('PASS: negative cases, Unicode, access, cursor and multi-page history')
 
-    print("Тест: Отсутствие X-User-Id (ожидается 401)")
-    r5 = requests.get(f"{BASE_URL}/chats")
-    assert r5.status_code == 401
+    actors = [c.user('race' + str(i)) for i in range(10)]
+    race_chat = c.call('POST', '/api/v1/chats', 201, actor=actors[0],
+        body={'title': 'race', 'member_ids': [a['id'] for a in actors]}, schema='Chat')['json']
+    def send(i):
+        return Client(args.base_url).message(actors[i % 10], race_chat, 'race_' + str(i))['json']
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+        confirmed = list(pool.map(send, range(100)))  # propagates every worker exception
+    received = history(c, actors[0], race_chat)
+    check(len(received) == len(confirmed) == 100, 'message loss or extra records')
+    check(len({m['id'] for m in received}) == 100, 'duplicate IDs')
+    check({m['id']: m for m in received} == {m['id']: m for m in confirmed}, 'confirmed content differs')
+    # Two concurrent registrations must not both claim the same username.
+    import uuid
+    registration = {'username': 'race_' + uuid.uuid4().hex[:12], 'display_name': 'Race'}
+    def register(_):
+        return Client(args.base_url).call('POST', '/api/v1/users', [201, 409], body=registration)['status']
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+        codes = list(pool.map(register, range(10)))
+    check(codes.count(201) == 1 and codes.count(409) == 9, 'username race')
+    print('PASS: 100 confirmed = 100 unique read, 10 clients; atomic username uniqueness')
 
-    print("Тест: Чтение чужого чата (ожидается 404)")
-    u1 = requests.post(f"{BASE_URL}/users", json={"username": "user_a"}).json()
-    u2 = requests.post(f"{BASE_URL}/users", json={"username": "user_b"}).json()
-    chat = requests.post(f"{BASE_URL}/chats", json={"title": "Test", "member_ids": [u1["user_id"], u2["user_id"]]}, headers={"X-User-Id": u1["user_id"]}).json()
-    u3 = requests.post(f"{BASE_URL}/users", json={"username": "user_c"}).json()
-    r7 = requests.get(f"{BASE_URL}/chats/{chat['chat_id']}", headers={"X-User-Id": u3["user_id"]})
-    assert r7.status_code == 404
 
-    print("Тест: Некорректный cursor (ожидается 400)")
-    r8 = requests.get(f"{BASE_URL}/chats/{chat['chat_id']}/messages?cursor=invalid", headers={"X-User-Id": u1["user_id"]})
-    assert r8.status_code == 400
-    print("Все негативные тесты пройдены!\n")
-
-def test_concurrency():
-    print("Тест: Конкурентная запись (100 сообщений от 10 клиентов)")
-    user_ids = [requests.post(f"{BASE_URL}/users", json={"username": f"client_{i}_{os.urandom(4).hex()}"}).json()["user_id"] for i in range(10)]
-    chat_id = requests.post(f"{BASE_URL}/chats", json={"title": "Race Chat", "member_ids": user_ids}, headers={"X-User-Id": user_ids[0]}).json()["chat_id"]
-
-    sent_ids = []
-    def send_msg(user_id, msg_num):
-        resp = requests.post(f"{BASE_URL}/chats/{chat_id}/messages", json={"text": f"race_msg_{msg_num}"}, headers={"X-User-Id": user_id})
-        if resp.status_code == 201:
-            sent_ids.append(resp.json()["message_id"])
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        concurrent.futures.wait([executor.submit(send_msg, user_ids[i % 10], i) for i in range(100)])
-
-    messages = requests.get(f"{BASE_URL}/chats/{chat_id}/messages?limit=100", headers={"X-User-Id": user_ids[0]}).json().get("items", [])
-    received_ids = [msg["message_id"] for msg in messages]
-
-    assert len(sent_ids) == 100, f"Ожидалось 100 подтверждений, получено {len(sent_ids)}"
-    assert len(set(received_ids)) == 100, f"Ожидалось 100 уникальных сообщений, получено {len(set(received_ids))}"
-    print(f"Отправлено и подтверждено: {len(sent_ids)}. Уникальных получено: {len(set(received_ids))}")
-    print("Тест на гонки пройден успешно!\n")
-
-if __name__ == "__main__":
-    test_negative_cases()
-    test_concurrency()
-    print("Все тесты успешно завершены")
+if __name__ == '__main__':
+    run(main)

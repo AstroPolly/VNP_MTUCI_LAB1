@@ -1,187 +1,268 @@
-import signal
-import sys
+"""Lab1: one process, bounded in-memory state, no persistence."""
+import base64
+import hashlib
+import hmac
+import json
+import logging
+import os
+import re
+import secrets
+import threading
+import time
 import uuid
-from datetime import datetime, timezone
-from typing import Optional, List, Dict
-from fastapi import FastAPI, Header, Query, HTTPException, Request, Depends
+from datetime import datetime, timedelta, timezone
+
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, Field, ConfigDict, ValidationError
+from starlette.exceptions import HTTPException
 
-app = FastAPI(title="MTUSI Lab1 Messenger")
-
-users: Dict[str, dict] = {}
-chats: Dict[str, dict] = {}
-messages: Dict[str, List[dict]] = {}
-
-MAX_GLOBAL_MESSAGES = 500
-global_message_count = 0
+log = logging.getLogger('uvicorn.error')
+CODES = {400: 'invalid_request', 401: 'unauthorized', 404: 'not_found',
+         409: 'conflict', 413: 'payload_too_large', 415: 'unsupported_media_type',
+         429: 'rate_limited', 503: 'unavailable', 500: 'internal_error'}
 
 
-class UserCreate(BaseModel):
-    model_config = ConfigDict(extra='forbid') # Закрывает претензию "Лишние поля JSON игнорируются"
-    username: str = Field(..., pattern=r'^[a-z0-9_]{3,32}$') # Закрывает претензию "Нет проверки формата username"
-
-class UserResponse(BaseModel):
-    user_id: str
-    display_name: str
-    created_at: str
-
-class ChatCreate(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    title: str = Field(..., min_length=1, max_length=100) # Было name, стало title по контракту
-    member_ids: List[str] = Field(..., min_length=2)      # Было members, стало member_ids
-
-class ChatResponse(BaseModel):
-    chat_id: str
-    title: str
-    member_ids: List[str]
-    created_at: str
-
-class MessageCreate(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    text: str = Field(..., min_length=1, max_length=4000) # Закрывает претензию "Принимаются пустые и длинные сообщения"
-
-class MessageResponse(BaseModel):
-    message_id: str
-    chat_id: str
-    sender_id: str
-    text: str
-    created_at: str
-
-class MessagesPage(BaseModel):
-    items: List[MessageResponse] 
-    cursor: Optional[str] = None
+def positive_env(name, default):
+    value = int(os.getenv(name, default))
+    if value <= 0:
+        raise ValueError(f'{name} must be positive')
+    return value
 
 
-@app.middleware("http")
-async def add_request_id(request: Request, call_next):
-    req_id = request.headers.get("X-Request-Id", str(uuid.uuid4()))
-    request.state.request_id = req_id
+class Problem(Exception):
+    def __init__(self, status, message):
+        self.status, self.message = status, message
+
+
+class Store:
+    def __init__(self):
+        self.lock = threading.RLock()
+        self.users, self.names, self.chats, self.messages = {}, {}, {}, {}
+        self.count = 0
+        self.max_users = positive_env('MAX_USERS', 10000)
+        self.max_chats = positive_env('MAX_CHATS', 10000)
+        self.max_messages = positive_env('MAX_MESSAGES', 50000)
+        self.rate = positive_env('WRITE_RATE', 1000)
+        self.burst = positive_env('WRITE_BURST', 2000)
+        self.tokens = float(self.burst)
+        self.refill = time.monotonic()
+        self.secret = secrets.token_bytes(32)
+        self.last_time = datetime.min.replace(tzinfo=timezone.utc)
+
+    def stamp(self):
+        # Called under lock: even if wall clock moves backwards, order stays stable.
+        self.last_time = max(datetime.now(timezone.utc), self.last_time + timedelta(microseconds=1))
+        return self.last_time.isoformat(timespec='microseconds').replace('+00:00', 'Z')
+
+    def write_slot(self):
+        now = time.monotonic()
+        self.tokens = min(self.burst, self.tokens + (now - self.refill) * self.rate)
+        self.refill = now
+        if self.tokens < 1:
+            raise Problem(429, 'Write rate exceeded; retry later')
+        self.tokens -= 1
+
+    def page(self, rows, scope, query):
+        raw_limit = query.get('limit', '50')
+        if not re.fullmatch(r'[0-9]+', raw_limit) or not 1 <= int(raw_limit) <= 100:
+            raise Problem(400, 'limit must be an integer from 1 to 100')
+        limit = int(raw_limit)
+        rows = sorted(rows, key=lambda row: (row['created_at'], row['id']))
+        cursor = query.get('cursor')
+        if cursor is not None:
+            try:
+                data, signature = cursor.split('.')
+                expected = hmac.new(self.secret, data.encode(), hashlib.sha256).hexdigest()
+                if not hmac.compare_digest(signature, expected):
+                    raise ValueError()
+                token_scope, stamp, ident = json.loads(base64.urlsafe_b64decode(data + '=' * (-len(data) % 4)))
+                if token_scope != scope or not any(r['id'] == ident and r['created_at'] == stamp for r in rows):
+                    raise ValueError()
+            except (ValueError, TypeError, UnicodeError):
+                raise Problem(400, 'Invalid cursor') from None
+            rows = [r for r in rows if (r['created_at'], r['id']) > (stamp, ident)]
+        items = rows[:limit]
+        next_cursor = None
+        if len(rows) > limit:
+            last = items[-1]
+            data = base64.urlsafe_b64encode(json.dumps([scope, last['created_at'], last['id']]).encode()).decode().rstrip('=')
+            next_cursor = data + '.' + hmac.new(self.secret, data.encode(), hashlib.sha256).hexdigest()
+        return {'items': items, 'next_cursor': next_cursor}
+
+
+def canonical_uuid(value, status=400):
     try:
-        response = await call_next(request)
-        response.headers["X-Request-Id"] = req_id
+        if not isinstance(value, str):
+            raise ValueError()
+        return str(uuid.UUID(value))
+    except (ValueError, AttributeError):
+        raise Problem(status, 'Invalid identification' if status == 401 else 'Invalid UUID') from None
+
+
+def text_field(data, key, maximum):
+    value = data[key]
+    if not isinstance(value, str) or not value.strip() or len(value) > maximum:
+        raise Problem(400, f'Invalid {key}')
+    try:
+        value.encode('utf-8')
+    except UnicodeError:
+        raise Problem(400, f'Invalid Unicode in {key}') from None
+    return value
+
+
+def create_app():
+    app = FastAPI(title='Lab1 Messenger', docs_url=None, redoc_url=None, openapi_url=None)
+    store = Store()
+    app.state.store = store
+    max_body = positive_env('MAX_BODY_BYTES', 65536)
+
+    def error(request, status, message):
+        headers = {'X-Request-Id': request.state.request_id}
+        if status == 429:
+            headers['Retry-After'] = '1'
+        return JSONResponse({'error': {'code': CODES.get(status, 'invalid_request'),
+                            'message': message, 'request_id': request.state.request_id}},
+                            status_code=status, headers=headers)
+
+    @app.middleware('http')
+    async def boundary(request, call_next):
+        # Generate our own ID; do not echo untrusted, arbitrarily long header values.
+        request.state.request_id = str(uuid.uuid4())
+        start = time.monotonic()
+        try:
+            response = await call_next(request)
+        except Exception:
+            log.error('Unhandled request failure request_id=%s', request.state.request_id)
+            response = error(request, 500, 'Internal server error')
+        response.headers['X-Request-Id'] = request.state.request_id
+        # No body, query, credentials, or user-controlled path in the logs.
+        route = request.scope.get('route')
+        log.info('method=%s route=%s status=%s elapsed_ms=%.2f request_id=%s',
+                 request.method, getattr(route, 'path', 'unmatched'), response.status_code,
+                 (time.monotonic() - start) * 1000, request.state.request_id)
         return response
-    except Exception as exc:
-        raise exc
+
+    @app.exception_handler(Problem)
+    async def problem(request, exc):
+        return error(request, exc.status, exc.message)
+
+    @app.exception_handler(HTTPException)
+    async def http_problem(request, exc):
+        return error(request, exc.status_code, 'Not found' if exc.status_code == 404 else 'Invalid request')
+
+    def actor(request):
+        ident = canonical_uuid(request.headers.get('X-User-Id'), 401)
+        if ident not in store.users:
+            raise Problem(401, 'Unknown user')
+        return ident
+
+    def accessible(chat_id, user_id):
+        chat_id = canonical_uuid(chat_id)
+        chat = store.chats.get(chat_id)
+        if chat is None or user_id not in chat['member_ids']:
+            raise Problem(404, 'Chat not found')
+        return chat_id
+
+    async def payload(request, fields):
+        if request.headers.get('content-type', '').split(';')[0].strip().lower() != 'application/json':
+            raise Problem(415, 'Expected application/json')
+        data = bytearray()
+        async for chunk in request.stream():
+            if len(data) + len(chunk) > max_body:
+                raise Problem(413, 'Request body too large')
+            data.extend(chunk)
+        try:
+            body = json.loads(data)
+        except (ValueError, UnicodeError, RecursionError):
+            raise Problem(400, 'Malformed JSON') from None
+        if not isinstance(body, dict) or set(body) != set(fields):
+            raise Problem(400, 'Missing or extra fields')
+        return body
+
+    @app.get('/health/live')
+    @app.get('/health/ready')
+    async def health():
+        return {'status': 'ok'}
+
+    @app.post('/api/v1/users', status_code=201)
+    async def create_user(request: Request):
+        body = await payload(request, ['username', 'display_name'])
+        name = text_field(body, 'username', 32)
+        display = text_field(body, 'display_name', 100)
+        if re.fullmatch(r'[a-z0-9_]{3,32}', name) is None:
+            raise Problem(400, 'Invalid username')
+        with store.lock:
+            if name in store.names:
+                raise Problem(409, 'Username already exists')
+            if len(store.users) >= store.max_users:
+                raise Problem(503, 'User capacity reached')
+            store.write_slot()
+            user = {'id': str(uuid.uuid4()), 'username': name, 'display_name': display, 'created_at': store.stamp()}
+            store.users[user['id']] = user
+            store.names[name] = user['id']
+            return user
+
+    @app.get('/api/v1/users/me')
+    async def me(request: Request):
+        with store.lock:
+            return store.users[actor(request)]
+
+    @app.post('/api/v1/chats', status_code=201)
+    async def create_chat(request: Request):
+        with store.lock:
+            user_id = actor(request)
+        body = await payload(request, ['title', 'member_ids'])
+        title = text_field(body, 'title', 100)
+        members = body['member_ids']
+        if not isinstance(members, list) or not 1 <= len(members) <= 100:
+            raise Problem(400, 'Invalid member_ids')
+        members = [canonical_uuid(m) for m in members]
+        with store.lock:
+            if len(set(members)) != len(members) or user_id not in members or any(m not in store.users for m in members):
+                raise Problem(400, 'Invalid member_ids')
+            if len(store.chats) >= store.max_chats:
+                raise Problem(503, 'Chat capacity reached')
+            store.write_slot()
+            chat = {'id': str(uuid.uuid4()), 'title': title, 'member_ids': members, 'created_at': store.stamp()}
+            store.chats[chat['id']] = chat
+            store.messages[chat['id']] = []
+            return chat
+
+    @app.get('/api/v1/chats')
+    async def list_chats(request: Request):
+        with store.lock:
+            user_id = actor(request)
+            return store.page([c for c in store.chats.values() if user_id in c['member_ids']], 'chats:' + user_id, request.query_params)
+
+    @app.get('/api/v1/chats/{chat_id}')
+    async def get_chat(chat_id: str, request: Request):
+        with store.lock:
+            return store.chats[accessible(chat_id, actor(request))]
+
+    @app.post('/api/v1/chats/{chat_id}/messages', status_code=201)
+    async def send_message(chat_id: str, request: Request):
+        with store.lock:
+            user_id = actor(request)
+            chat_id = accessible(chat_id, user_id)
+        body = await payload(request, ['text'])
+        content = text_field(body, 'text', 4000)
+        with store.lock:
+            if store.count >= store.max_messages:
+                raise Problem(503, 'Message capacity reached; existing messages are retained')
+            store.write_slot()
+            message = {'id': str(uuid.uuid4()), 'chat_id': chat_id, 'sender_id': user_id,
+                       'text': content, 'created_at': store.stamp()}
+            store.messages[chat_id].append(message)
+            store.count += 1
+            return message
+
+    @app.get('/api/v1/chats/{chat_id}/messages')
+    async def list_messages(chat_id: str, request: Request):
+        with store.lock:
+            chat_id = accessible(chat_id, actor(request))
+            return store.page(store.messages[chat_id], 'messages:' + chat_id, request.query_params)
+
+    return app
 
 
-@app.exception_handler(RequestValidationError)
-@app.exception_handler(ValidationError)
-async def validation_exception_handler(request: Request, exc: Exception):
-    req_id = getattr(request.state, "request_id", str(uuid.uuid4()))
-    return JSONResponse(
-        status_code=400,
-        content={"error": {"code": "400", "message": "Invalid request payload", "request_id": req_id}},
-        headers={"X-Request-Id": req_id}
-    )
-
-
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-    req_id = getattr(request.state, "request_id", str(uuid.uuid4()))
-    status_code = 404 if exc.status_code == 403 else exc.status_code
-    return JSONResponse(
-        status_code=status_code,
-        content={"error": {"code": str(status_code), "message": exc.detail, "request_id": req_id}},
-        headers={"X-Request-Id": req_id}
-    )
-
-
-def get_current_user(x_user_id: Optional[str] = Header(None, alias="X-User-Id")):
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="Missing X-User-Id")
-    if x_user_id not in users:
-        raise HTTPException(status_code=401, detail="User not found")
-    return x_user_id
-
-
-@app.post("/api/v1/users", status_code=201, response_model=UserResponse)
-def create_user(user: UserCreate):
-    for u in users.values():
-        if u["display_name"].lower() == user.username.lower():
-            raise HTTPException(status_code=409, detail="Username already exists")
-    
-    user_id = str(uuid.uuid4())
-    created_at = datetime.now(timezone.utc).isoformat()
-    users[user_id] = {"user_id": user_id, "display_name": user.username, "created_at": created_at}
-    return users[user_id]
-
-@app.get("/api/v1/users/me", response_model=UserResponse)
-def get_current_user_info(current_user_id: str = Depends(get_current_user)):
-    return users[current_user_id]
-
-@app.post("/api/v1/chats", status_code=201, response_model=ChatResponse)
-def create_chat(chat: ChatCreate, current_user_id: str = Depends(get_current_user)):
-    for member_id in chat.member_ids:
-        if member_id not in users:
-            raise HTTPException(status_code=404, detail=f"User {member_id} not found")
-    if current_user_id not in chat.member_ids:
-        raise HTTPException(status_code=400, detail="Creator must be a member of the chat")
-
-    chat_id = str(uuid.uuid4())
-    created_at = datetime.now(timezone.utc).isoformat()
-    chats[chat_id] = {"chat_id": chat_id, "title": chat.title, "member_ids": chat.member_ids, "created_at": created_at}
-    messages[chat_id] = []
-    return chats[chat_id]
-
-@app.get("/api/v1/chats", response_model=List[ChatResponse])
-def get_chats(current_user_id: str = Depends(get_current_user)):
-    return [chat for chat in chats.values() if current_user_id in chat["member_ids"]]
-
-@app.get("/api/v1/chats/{chat_id}", response_model=ChatResponse)
-def get_chat(chat_id: str, current_user_id: str = Depends(get_current_user)):
-    if chat_id not in chats or current_user_id not in chats[chat_id]["member_ids"]:
-        raise HTTPException(status_code=404, detail="Chat not found") # Маскируем под 404
-    return chats[chat_id]
-
-@app.post("/api/v1/chats/{chat_id}/messages", status_code=201, response_model=MessageResponse)
-def send_message(chat_id: str, message: MessageCreate, current_user_id: str = Depends(get_current_user)):
-    if chat_id not in chats or current_user_id not in chats[chat_id]["member_ids"]:
-        raise HTTPException(status_code=404, detail="Chat not found") # Маскируем под 404
-    
-    global global_message_count
-    if global_message_count >= MAX_GLOBAL_MESSAGES:
-        raise HTTPException(status_code=503, detail="Service overloaded: global message limit reached")
-
-    msg_id = str(uuid.uuid4())
-    created_at = datetime.now(timezone.utc).isoformat()
-    msg_data = {"message_id": msg_id, "chat_id": chat_id, "sender_id": current_user_id, "text": message.text, "created_at": created_at}
-    messages[chat_id].append(msg_data)
-    global_message_count += 1
-    return msg_data
-
-@app.get("/api/v1/chats/{chat_id}/messages", response_model=MessagesPage)
-def get_messages(chat_id: str, current_user_id: str = Depends(get_current_user), limit: int = Query(50, ge=1, le=100), cursor: Optional[str] = None):
-    if chat_id not in chats or current_user_id not in chats[chat_id]["member_ids"]:
-        raise HTTPException(status_code=404, detail="Chat not found")
-    
-    chat_msgs = messages.get(chat_id, [])
-    start_idx = 0
-    if cursor is not None:
-        found = False
-        for i, msg in enumerate(chat_msgs):
-            if msg["message_id"] == cursor:
-                start_idx = i + 1
-                found = True
-                break
-        if not found and cursor != "":
-            raise HTTPException(status_code=400, detail="Invalid cursor")
-    
-    result = chat_msgs[start_idx:start_idx + limit]
-    next_cursor = result[-1]["message_id"] if len(result) == limit else None # Вернёт null, если это последняя страница
-    return {"items": result, "cursor": next_cursor}
-
-@app.get("/health/live")
-def health_live():
-    return {"status": "ok"}
-
-@app.get("/health/ready")
-def health_ready():
-    return {"status": "ok"}
-
-def handle_sigterm(signum, frame):
-    print("Получен SIGTERM, корректное завершение...", file=sys.stderr)
-    sys.exit(0)
-
-signal.signal(signal.SIGTERM, handle_sigterm)
+app = create_app()

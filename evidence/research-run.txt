@@ -1,0 +1,35 @@
+transient {
+  "settings": {
+    "WRITE_RATE": 40,
+    "WRITE_BURST": 20,
+    "MAX_MESSAGES": 5000
+  },
+  "attempted": 680,
+  "confirmed_including_recovery_probe": 254,
+  "verified_read": 254,
+  "rejected_429": 427,
+  "rejected_503": 0,
+  "rss_min_mib": 36.93359375,
+  "rss_max_mib": 44.23828125,
+  "sigterm_seconds": 1.3162200990000201,
+  "restart_old_user_status": 401,
+  "automatic_recovery_without_loss": true
+}
+capacity {
+  "settings": {
+    "WRITE_RATE": 10000,
+    "WRITE_BURST": 10000,
+    "MAX_MESSAGES": 1000
+  },
+  "attempted": 1200,
+  "confirmed_including_recovery_probe": 1000,
+  "verified_read": 1000,
+  "rejected_429": 0,
+  "rejected_503": 200,
+  "rss_min_mib": 39.484375,
+  "rss_max_mib": 61.71484375,
+  "sigterm_seconds": 0.16606451999996352,
+  "restart_old_user_status": 401,
+  "automatic_recovery_without_loss": false
+}
+PASS: transient recovery, global capacity, integrity, SIGTERM and restart

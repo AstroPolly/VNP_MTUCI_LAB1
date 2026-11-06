@@ -1,0 +1,16 @@
+/workspace/scratch/7af5891e2b65/work/VNP_MTUCI_LAB1-main/../../.venv/bin/python -m compileall -q main.py run.py test.py track2_test.py student-tests tests
+/workspace/scratch/7af5891e2b65/work/VNP_MTUCI_LAB1-main/../../.venv/bin/python -c "import json; from pathlib import Path; [json.loads(p.read_text()) for p in Path('contracts').glob('*.json')]"
+/workspace/scratch/7af5891e2b65/work/VNP_MTUCI_LAB1-main/../../.venv/bin/python -m openapi_spec_validator contracts/openapi.json
+contracts/openapi.json: OK
+....                                                                     [100%]
+=============================== warnings summary ===============================
+../../.venv/lib/python3.12/site-packages/starlette/testclient.py:40
+  /workspace/scratch/7af5891e2b65/.venv/lib/python3.12/site-packages/starlette/testclient.py:40: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = typing.Callable[[], typing.ContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+4 passed, 1 warning in 0.47s
+PASS: lab1 public API scenario; infrastructure and grading evidence remain separate.
+PASS: negative cases, Unicode, access, cursor and multi-page history
+PASS: 100 confirmed = 100 unique read, 10 clients; atomic username uniqueness
+SIGTERM seconds: 0.16459119499995722
