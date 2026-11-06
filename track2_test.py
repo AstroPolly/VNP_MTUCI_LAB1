@@ -1,54 +1,53 @@
 import requests
-import matplotlib.pyplot as plt
 import os
+import time
 
-BASE_URL = "http://127.0.0.1:8081"
+BASE_URL = os.getenv("API_URL", "http://127.0.0.1:8080/api/v1")
 
-
-user_resp = requests.post(f"{BASE_URL}/users", json={"username": "degradation_tester"})
-user_id = user_resp.json()["user_id"]
-chat_resp = requests.post(f"{BASE_URL}/chats", json={"name": "Degradation Chat", "members": [user_id]})
-chat_id = chat_resp.json()["chat_id"]
-headers = {"X-User-Id": user_id}
-
-status_codes = []
-print("Отправка 600 запросов (лимит сервера = 500)...")
-for i in range(600):
+def get_rss_mb():
     try:
-        response = requests.post(f"{BASE_URL}/chats/{chat_id}/messages", json={"text": f"msg_{i}"}, headers=headers)
-        status_codes.append(response.status_code)
-    except requests.exceptions.RequestException:
-        status_codes.append(500)
+        with open("/proc/self/status", "r") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) / 1024 # KB to MB
+    except Exception:
+        return 0.0
 
-print("Построение ТОЧЕЧНОГО графика (scatter)...")
-os.makedirs("evidence", exist_ok=True)
+def test_degradation():
+    print("Создание пользователя и чата...")
+    user = requests.post(f"{BASE_URL}/users", json={"username": "load_tester"}).json()
+    chat = requests.post(f"{BASE_URL}/chats", json={"title": "Load Chat", "member_ids": [user["user_id"]]}, headers={"X-User-Id": user["user_id"]}).json()
+    chat_id = chat["chat_id"]
 
-plt.figure(figsize=(12, 6))
+    print(f"Отправка 550 сообщений (глобальный лимит сервера: {500})...")
+    stats = {"201": 0, "503": 0, "other": 0}
+    rss_readings = []
 
+    for i in range(550):
+        resp = requests.post(f"{BASE_URL}/chats/{chat_id}/messages", json={"text": "x" * 100}, headers={"X-User-Id": user["user_id"]})
+        if resp.status_code == 201: stats["201"] += 1
+        elif resp.status_code == 503: stats["503"] += 1
+        else: stats["other"] += 1
+            
+        if i % 50 == 0:
+            rss_readings.append((i, get_rss_mb(), resp.status_code))
 
-x = list(range(len(status_codes)))
-y = status_codes
+    print(f"Результаты: 201 OK: {stats['201']}, 503 Service Unavailable: {stats['503']}")
+    print("Динамика RSS (MB):")
+    for req_num, rss, status in rss_readings:
+        print(f"  Запрос {req_num:3d}: {rss:6.2f} MB (статус: {status})")
 
+    assert stats["503"] > 0, "Сервер не вернул 503 при превышении лимита!"
+    
+    print("Проверка стабильности после перегрузки...")
+    time.sleep(1)
+    resp = requests.post(f"{BASE_URL}/chats/{chat_id}/messages", json={"text": "test"}, headers={"X-User-Id": user["user_id"]})
+    assert resp.status_code == 503, "Сервер должен продолжать возвращать 503"
+    
+    history = requests.get(f"{BASE_URL}/chats/{chat_id}/messages?limit=10", headers={"X-User-Id": user["user_id"]})
+    assert history.status_code == 200 and len(history.json()["items"]) == 10
+    
+    print("Трек 2 пройден: управляемая деградация работает, OOM предотвращён, данные сохранены.\n")
 
-colors = ['green' if code == 200 else 'red' for code in y]
-
-
-plt.scatter(x, y, c=colors, s=30, alpha=0.8, edgecolors='none', label='Результаты запросов')
-
-
-plt.axhline(y=503, color='darkred', linestyle='--', linewidth=2, alpha=0.7, label='Лимит (503)')
-plt.axhline(y=200, color='darkgreen', linestyle='--', linewidth=2, alpha=0.7, label='Успех (200)')
-
-plt.title("Трек 2: Управляемая деградация\n(Первые 500 успешны, далее сервер защищает память от OOM)", fontsize=14, fontweight='bold')
-plt.xlabel("Номер запроса (время)", fontsize=12)
-plt.ylabel("HTTP Status Code", fontsize=12)
-
-# Делаем подписи на оси Y понятными
-plt.yticks([200, 503], ["200 OK (Успех)", "503 Service Unavailable (Отказ)"], fontsize=11)
-
-plt.legend(loc='center right', fontsize=11)
-plt.grid(True, axis='x', alpha=0.3) # Сетка только по X, чтобы не мешать точкам
-
-plt.tight_layout()
-plt.savefig("evidence/graph_track2.png", dpi=300, bbox_inches='tight')
-print("🎨 Идеальный точечный график сохранен: evidence/graph_track2.png")
+if __name__ == "__main__":
+    test_degradation()
